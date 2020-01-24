@@ -1,0 +1,23 @@
+[package]
+name = "vessels_chat"
+version = "0.1.0"
+authors = ["Izzy Swart <zenerboson@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+vessels = { git = "https://github.com/noocene/vessels", features = ["core"] }
+serde = "1.0.104"
+futures = "0.3.1"
+pharos = { git = "https://github.com/syntacticsugarglider/pharos" }
+termion = "1.5.5"
+tui = "0.8.0"
+unicode-width = "0.1.7"
+anyhow = "1.0.26"
+
+[[bin]]
+name = "client"
+path = "src/client.rs"
+
+[[bin]]
+name = "server"
+path = "src/server.rs"
