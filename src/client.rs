@@ -1,6 +1,6 @@
 mod event;
 
-use std::io::{self, Write};
+use std::{io::{self, Write}, collections::VecDeque};
 
 use event::{Event, Events};
 use termion::cursor::Goto;
@@ -25,14 +25,14 @@ use vessels_chat::{Chat, Message};
 
 struct App {
     input: String,
-    messages: Arc<Mutex<Vec<String>>>,
+    messages: Arc<Mutex<VecDeque<String>>>,
 }
 
 impl Default for App {
     fn default() -> App {
         App {
             input: String::new(),
-            messages: Arc::new(Mutex::new(Vec::new())),
+            messages: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
 }
@@ -62,14 +62,14 @@ fn main() -> Result<(), anyhow::Error> {
                 .await
                 .unwrap();
             let (initial, mut stream) = chat.messages().await.unwrap();
-            *messages.lock().unwrap() = initial.into_iter().map(|m| m.content).collect();
+            *messages.lock().unwrap() = initial.into_iter().map(|m| m.content).rev().collect();
             spawn(async move {
                 while let Some(item) = receiver.next().await {
                     chat.send(Message { content: item }).await.unwrap();
                 }
             });
             while let Some(item) = stream.next().await {
-                messages.lock().unwrap().push(item.unwrap().content);
+                messages.lock().unwrap().push_front(item.unwrap().content);
             }
         });
     });
