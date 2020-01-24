@@ -52,11 +52,13 @@ fn main() -> Result<(), anyhow::Error> {
 
     let (sender, mut receiver) = unbounded();
 
+    let url = std::env::args().skip(1).next().expect("pass url with port as arg").parse().unwrap();
+
     std::thread::spawn(move || {
         run(async move {
             let mut network = Client::new().unwrap();
             let mut chat = network
-                .connect::<Box<dyn Chat>, IdChannel, Cbor>("ws://127.0.0.1:61200".parse().unwrap())
+                .connect::<Box<dyn Chat>, IdChannel, Cbor>(url)
                 .await
                 .unwrap();
             let (initial, mut stream) = chat.messages().await.unwrap();

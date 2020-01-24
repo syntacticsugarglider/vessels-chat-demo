@@ -56,10 +56,17 @@ fn main() {
     let mut server = Server::new().unwrap();
     let chat = Shared::new(Box::new(VesselsChat::new()) as Box<dyn Chat>);
 
+    let url = std::env::args()
+        .skip(1)
+        .next()
+        .expect("pass url with port as arg")
+        .parse()
+        .unwrap();
+
     run(async move {
         server
             .listen::<Box<dyn Chat>, IdChannel, Cbor>(
-                "127.0.0.1:61200".parse().unwrap(),
+                url,
                 Box::new(move || {
                     let chat = chat.share();
                     Box::pin(async move { Box::new(chat.share()) as Box<dyn Chat> })

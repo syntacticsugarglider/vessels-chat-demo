@@ -21,3 +21,6 @@ path = "src/client.rs"
 [[bin]]
 name = "server"
 path = "src/server.rs"
+
+[profile.release]
+lto = true
