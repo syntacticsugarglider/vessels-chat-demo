@@ -1,0 +1,24 @@
+[package]
+name = "vessels-chat-demo"
+version = "0.1.0"
+authors = ["Izzy Swart <zenerboson@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+iui = "0.3.0"
+protocol = { git = "https://github.com/noocene/protocol" }
+protocol-mve-transport = { git = "https://github.com/noocene/protocol-mve-transport" }
+abstract-ws = { git = "https://github.com/noocene/abstract-ws" }
+abstract-ws-tungstenite = { git = "https://github.com/noocene/abstract-ws-tungstenite" }
+core-error = { git = "https://github.com/core-error/core-error", default-features = false }
+thiserror = { git = "https://github.com/noocene/thiserror", default-features = false }
+futures = { version = "0.3.5", default-features = false }
+async-std = "1.6.0"
+
+[[bin]]
+name = "native"
+path = "src/native.rs"
+
+[[bin]]
+name = "server"
+path = "src/server.rs"
