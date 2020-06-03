@@ -1,6 +1,9 @@
 use abstract_ws::ServerProvider;
 use abstract_ws_tungstenite::{Server, Socket, WsError};
-use async_std::task::{block_on, spawn};
+use async_std::{
+    net::{TcpListener, TcpStream},
+    task::{block_on, spawn},
+};
 use core::{
     iter::repeat,
     pin::Pin,
@@ -118,7 +121,8 @@ fn main() {
     let mut id = 0u32;
 
     block_on(async move {
-        let mut connections = Server.listen("127.0.0.1:8080".parse().unwrap());
+        let mut connections =
+            Server::<TcpListener>::new().listen("127.0.0.1:8080".parse().unwrap());
 
         let server = ChatServer {
             senders: Arc::new(Mutex::new(vec![])),
@@ -141,8 +145,8 @@ fn main() {
                 Unravel::<
                     WsError,
                     Spawner,
-                    SplitStream<Socket>,
-                    CloseOnDrop<SplitSink<Socket, Vec<u8>>, Vec<u8>>,
+                    SplitStream<Socket<TcpStream>>,
+                    CloseOnDrop<SplitSink<Socket<TcpStream>, Vec<u8>>, Vec<u8>>,
                     ErasedChat,
                 >::new(
                     receiver,

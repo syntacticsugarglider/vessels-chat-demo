@@ -1,6 +1,6 @@
 use abstract_ws::SocketProvider;
 use abstract_ws_tungstenite::{Provider, Socket, WsError};
-use async_std::task::spawn;
+use async_std::{net::TcpStream, task::spawn};
 use futures::{
     channel::mpsc::unbounded,
     stream::{SplitSink, SplitStream},
@@ -46,7 +46,7 @@ fn main() {
     });
 
     spawn(
-        Provider
+        Provider::new()
             .connect("ws://127.0.0.1:8080".parse().unwrap())
             .then(|connection| {
                 let connection = connection.unwrap();
@@ -54,8 +54,8 @@ fn main() {
                 Coalesce::<
                     WsError,
                     Spawner,
-                    SplitStream<Socket>,
-                    CloseOnDrop<SplitSink<Socket, Vec<u8>>, Vec<u8>>,
+                    SplitStream<Socket<TcpStream>>,
+                    CloseOnDrop<SplitSink<Socket<TcpStream>, Vec<u8>>, Vec<u8>>,
                     ErasedChat,
                 >::new(receiver, CloseOnDrop::new(sender), Spawner)
             })
