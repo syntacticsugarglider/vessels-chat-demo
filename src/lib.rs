@@ -18,16 +18,9 @@ impl From<ProtocolError> for Error {
 #[protocol]
 pub trait Chat {
     type Messages: Stream<Item = Result<String, Error>>;
-    type Send: Future<Output = Result<(), Error>>;
 
-    fn messages(&mut self, backlog: u32) -> Self::Messages;
-
-    fn send(&mut self, message: String) -> Self::Send;
+    fn messages(&mut self) -> Self::Messages;
 }
 
-pub type ErasedChat = Box<
-    dyn Chat<
-            Messages = Pin<Box<dyn Stream<Item = Result<String, Error>> + Send>>,
-            Send = Pin<Box<dyn Future<Output = Result<(), Error>> + Send>>,
-        > + Send,
->;
+pub type ErasedChat =
+    Box<dyn Chat<Messages = Pin<Box<dyn Stream<Item = Result<String, Error>> + Send>>> + Send>;
