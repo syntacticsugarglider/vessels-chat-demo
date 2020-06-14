@@ -1,14 +1,17 @@
 use abstract_ws::SocketProvider;
 use abstract_ws_tungstenite::{Provider, Socket, WsError};
-use async_std::{net::TcpStream, task::spawn};
 use futures::{
     channel::mpsc::unbounded,
     stream::{SplitSink, SplitStream},
+    task::SpawnExt,
     FutureExt, SinkExt, StreamExt,
 };
 use iui::controls::{Button, Entry, HorizontalBox, Label, TextEntry, VerticalBox};
 use iui::prelude::*;
 use protocol_mve_transport::Coalesce;
+use smol::{block_on, run, Async};
+use std::net::{TcpListener, TcpStream};
+use std::thread;
 
 use vessels_chat_demo::{
     util::{CloseOnDrop, Spawner},
@@ -45,37 +48,45 @@ fn main() {
         }
     });
 
-    spawn(
-        Provider::new()
-            .connect("ws://127.0.0.1:8080".parse().unwrap())
-            .then(|connection| {
-                let connection = connection.unwrap();
-                let (sender, receiver) = connection.split();
-                Coalesce::<
-                    WsError,
-                    Spawner,
-                    SplitStream<Socket<TcpStream>>,
-                    CloseOnDrop<SplitSink<Socket<TcpStream>, Vec<u8>>, Vec<u8>>,
-                    ErasedChat,
-                >::new(receiver, CloseOnDrop::new(sender), Spawner)
-            })
-            .then(|chat| async move {
-                let mut chat = chat.unwrap();
+    let num_threads = num_cpus::get().max(1);
 
-                let mut messages = chat.messages(100);
+    for _ in 0..num_threads {
+        thread::spawn(|| smol::run(futures::future::pending::<()>()));
+    }
 
-                spawn(async move {
-                    while let Some(message) = outgoing_receiver.next().await {
-                        chat.send(message).await.unwrap();
+    thread::spawn(move || {
+        block_on(
+            Provider::new()
+                .connect("ws://127.0.0.1:8080".parse().unwrap())
+                .then(|connection| {
+                    let connection = connection.unwrap();
+                    let (sender, receiver) = connection.split();
+                    Coalesce::<
+                        Spawner,
+                        SplitStream<Socket<Async<TcpStream>>>,
+                        CloseOnDrop<SplitSink<Socket<Async<TcpStream>>, Vec<u8>>, Vec<u8>>,
+                        ErasedChat,
+                    >::new(receiver, CloseOnDrop::new(sender), Spawner)
+                })
+                .then(|chat| async move {
+                    let mut chat = chat.unwrap();
+
+                    let mut messages = chat.messages(100);
+
+                    Spawner
+                        .spawn(async move {
+                            while let Some(message) = outgoing_receiver.next().await {
+                                chat.send(message).await.unwrap();
+                            }
+                        })
+                        .unwrap();
+
+                    while let Some(message) = messages.next().await {
+                        sender.send(message.unwrap()).await.unwrap();
                     }
-                });
-
-                while let Some(message) = messages.next().await {
-                    println!("{:?}", message);
-                    sender.send(message.unwrap()).await.unwrap();
-                }
-            }),
-    );
+                }),
+        )
+    });
 
     let mut label = Label::new(&ui, &"");
 
@@ -109,5 +120,5 @@ fn main() {
         }
     });
 
-    event_loop.run(&ui);
+    event_loop.run_delay(&ui, 200);
 }

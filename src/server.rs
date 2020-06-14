@@ -1,11 +1,6 @@
 use abstract_ws::ServerProvider;
-use abstract_ws_tungstenite::{Server, Socket, WsError};
-use async_std::{
-    net::{TcpListener, TcpStream},
-    task::{block_on, spawn},
-};
+use abstract_ws_tungstenite::{Server, Socket};
 use core::{
-    iter::repeat,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -14,11 +9,14 @@ use futures::{
     future::ready,
     lock::Mutex,
     sink::drain,
-    stream::{iter, FuturesUnordered, SplitSink, SplitStream, Stream},
+    stream::{FuturesUnordered, SplitSink, SplitStream, Stream},
     Future, FutureExt, SinkExt, StreamExt,
 };
 use protocol_mve_transport::Unravel;
+use smol::{block_on, Async, Task};
+use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
+use std::thread;
 
 use vessels_chat_demo::{
     util::{CloseOnDrop, Spawner},
@@ -78,12 +76,10 @@ impl Chat for ChatServer {
 
                 senders.push(sender);
 
-                DebugDrop::new(
-                    iter(repeat(Ok("test".to_owned()))).chain(receiver.map(|item| {
-                        println!("msg: {}", item);
-                        Ok(item)
-                    })),
-                )
+                DebugDrop::new(receiver.map(|item| {
+                    println!("msg: {}", item);
+                    Ok(item)
+                }))
             }
             .flatten_stream(),
         )
@@ -120,9 +116,15 @@ impl Chat for ChatServer {
 fn main() {
     let mut id = 0u32;
 
+    let num_threads = num_cpus::get().max(1);
+
+    for _ in 0..num_threads {
+        thread::spawn(|| smol::run(futures::future::pending::<()>()));
+    }
+
     block_on(async move {
         let mut connections =
-            Server::<TcpListener>::new().listen("127.0.0.1:8080".parse().unwrap());
+            Server::<Async<TcpListener>>::new().listen("127.0.0.1:8080".parse().unwrap());
 
         let server = ChatServer {
             senders: Arc::new(Mutex::new(vec![])),
@@ -133,7 +135,7 @@ fn main() {
             let server = server.duplicate(id);
             id += 1;
 
-            let connection = if let Ok(connection) = connection {
+            let connection = if let Ok(connection) = connection.map_err(|e| println!("{:?}", e)) {
                 connection
             } else {
                 continue;
@@ -141,12 +143,11 @@ fn main() {
 
             let (sender, receiver) = connection.split();
 
-            spawn(
+            Task::spawn(
                 Unravel::<
-                    WsError,
                     Spawner,
-                    SplitStream<Socket<TcpStream>>,
-                    CloseOnDrop<SplitSink<Socket<TcpStream>, Vec<u8>>, Vec<u8>>,
+                    SplitStream<Socket<Async<TcpStream>>>,
+                    CloseOnDrop<SplitSink<Socket<Async<TcpStream>>, Vec<u8>>, Vec<u8>>,
                     ErasedChat,
                 >::new(
                     receiver,
@@ -158,7 +159,8 @@ fn main() {
                     println!("{:?}", out);
                     ready(())
                 }),
-            );
+            )
+            .detach();
         }
     });
 }

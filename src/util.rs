@@ -1,4 +1,3 @@
-use async_std::task::spawn;
 use core::{
     marker::PhantomData,
     pin::Pin,
@@ -8,13 +7,14 @@ use futures::{
     task::{FutureObj, Spawn, SpawnError},
     Sink, SinkExt,
 };
+use smol::Task;
 
 #[derive(Clone)]
 pub struct Spawner;
 
 impl Spawn for Spawner {
     fn spawn_obj(&self, future: FutureObj<'static, ()>) -> Result<(), SpawnError> {
-        spawn(future);
+        Task::spawn(future).detach();
         Ok(())
     }
 }
@@ -37,9 +37,10 @@ impl<T: Send + Sink<U> + Unpin + 'static, U> Drop for CloseOnDrop<T, U> {
     fn drop(&mut self) {
         let mut sink = self.sink.take().unwrap();
 
-        spawn(async move {
+        Task::spawn(async move {
             let _ = sink.close().await;
-        });
+        })
+        .detach();
     }
 }
 
