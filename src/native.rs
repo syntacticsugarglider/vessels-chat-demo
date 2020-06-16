@@ -1,16 +1,17 @@
 use abstract_ws::SocketProvider;
-use abstract_ws_tungstenite::{Provider, Socket, WsError};
+use abstract_ws_tungstenite::{Provider, Socket};
+use core::convert::Infallible;
 use futures::{
     channel::mpsc::unbounded,
     stream::{SplitSink, SplitStream},
     task::SpawnExt,
-    FutureExt, SinkExt, StreamExt,
+    FutureExt, SinkExt, StreamExt, TryStreamExt,
 };
 use iui::controls::{Button, Entry, HorizontalBox, Label, TextEntry, VerticalBox};
 use iui::prelude::*;
 use protocol_mve_transport::Coalesce;
-use smol::{block_on, run, Async};
-use std::net::{TcpListener, TcpStream};
+use smol::Async;
+use std::net::TcpStream;
 use std::thread;
 
 use vessels_chat_demo::{
@@ -55,18 +56,27 @@ fn main() {
     }
 
     thread::spawn(move || {
-        block_on(
+        smol::run(
             Provider::new()
                 .connect("ws://127.0.0.1:8080".parse().unwrap())
-                .then(|connection| {
+                .then(|connection: Result<Socket<Async<TcpStream>>, _>| {
                     let connection = connection.unwrap();
                     let (sender, receiver) = connection.split();
-                    Coalesce::<
+
+                    let receiver = receiver.map_err(|_| {
+                        let a: Infallible = todo!();
+                        a
+                    });
+                    let sender = sender.sink_map_err(|_| {
+                        let a: Infallible = todo!();
+                        a
+                    });
+
+                    Coalesce::<_, _, _, ErasedChat>::new(
+                        receiver,
+                        CloseOnDrop::new(sender),
                         Spawner,
-                        SplitStream<Socket<Async<TcpStream>>>,
-                        CloseOnDrop<SplitSink<Socket<Async<TcpStream>>, Vec<u8>>, Vec<u8>>,
-                        ErasedChat,
-                    >::new(receiver, CloseOnDrop::new(sender), Spawner)
+                    )
                 })
                 .then(|chat| async move {
                     let mut chat = chat.unwrap();

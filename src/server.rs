@@ -1,16 +1,15 @@
 use abstract_ws::ServerProvider;
 use abstract_ws_tungstenite::{Server, Socket};
-use core::{
-    pin::Pin,
-    task::{Context, Poll},
-};
+use anyhow::anyhow;
+use core::convert::Infallible;
+use core::pin::Pin;
 use futures::{
     channel::mpsc::{unbounded, UnboundedSender},
     future::ready,
     lock::Mutex,
     sink::drain,
     stream::{FuturesUnordered, SplitSink, SplitStream, Stream},
-    Future, FutureExt, SinkExt, StreamExt,
+    Future, FutureExt, SinkExt, StreamExt, TryStreamExt,
 };
 use protocol_mve_transport::Unravel;
 use smol::{block_on, Async, Task};
@@ -37,30 +36,6 @@ impl ChatServer {
     }
 }
 
-pub struct DebugDrop<T> {
-    item: T,
-}
-
-impl<T> DebugDrop<T> {
-    fn new(item: T) -> Self {
-        DebugDrop { item }
-    }
-}
-
-impl<T> Drop for DebugDrop<T> {
-    fn drop(&mut self) {
-        println!("dropped")
-    }
-}
-
-impl<T: Stream + Unpin> Stream for DebugDrop<T> {
-    type Item = T::Item;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-        Pin::new(&mut self.item).poll_next(cx)
-    }
-}
-
 impl Chat for ChatServer {
     type Messages = Pin<Box<dyn Stream<Item = Result<String, Error>> + Send>>;
     type Send = Pin<Box<dyn Future<Output = Result<(), Error>> + Send>>;
@@ -76,31 +51,27 @@ impl Chat for ChatServer {
 
                 senders.push(sender);
 
-                DebugDrop::new(receiver.map(|item| {
-                    println!("msg: {}", item);
-                    Ok(item)
-                }))
+                receiver.map(|item| Ok(item))
             }
             .flatten_stream(),
         )
     }
 
     fn send(&mut self, message: String) -> Self::Send {
-        println!("send");
-
         let message = format!("({}): {}", self.id, message);
 
         let senders = self.senders.clone();
 
         Box::pin(async move {
             let mut senders = senders.lock().await;
-            println!("sendlock");
 
             let stream: FuturesUnordered<_> = senders
                 .iter_mut()
                 .map(|sink| {
                     sink.send(message.clone()).map(|e| {
-                        println!("{:?}", e);
+                        if let Err(e) = e {
+                            println!("send error: {:?}", e);
+                        }
                         Ok(())
                     })
                 })
@@ -143,13 +114,17 @@ fn main() {
 
             let (sender, receiver) = connection.split();
 
+            let receiver = receiver.map_err(|_| {
+                let a: Infallible = todo!();
+                a
+            });
+            let sender = sender.sink_map_err(|_| {
+                let a: Infallible = todo!();
+                a
+            });
+
             Task::spawn(
-                Unravel::<
-                    Spawner,
-                    SplitStream<Socket<Async<TcpStream>>>,
-                    CloseOnDrop<SplitSink<Socket<Async<TcpStream>>, Vec<u8>>, Vec<u8>>,
-                    ErasedChat,
-                >::new(
+                Unravel::<_, _, _, ErasedChat>::new(
                     receiver,
                     CloseOnDrop::new(sender),
                     Spawner,
