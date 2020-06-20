@@ -8,6 +8,31 @@ use futures::{
     Sink, SinkExt,
 };
 use smol::Task;
+use std::fmt::{Debug, Display};
+
+use thiserror::Error;
+
+#[derive(Error, Clone)]
+#[error("{display}")]
+pub struct TransportError {
+    display: String,
+    debug: String,
+}
+
+impl Debug for TransportError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        write!(formatter, "{}", self.debug)
+    }
+}
+
+impl TransportError {
+    pub fn new<T: Display + Debug>(item: T) -> Self {
+        Self {
+            display: format!("{}", item),
+            debug: format!("{:?}", item),
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct Spawner;

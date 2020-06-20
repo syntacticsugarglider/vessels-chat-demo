@@ -1,24 +1,23 @@
 use abstract_ws::ServerProvider;
-use abstract_ws_tungstenite::{Server, Socket};
-use anyhow::anyhow;
-use core::convert::Infallible;
+use abstract_ws_tungstenite::{ServerConfig, TlsServer};
 use core::pin::Pin;
 use futures::{
     channel::mpsc::{unbounded, UnboundedSender},
     future::ready,
     lock::Mutex,
     sink::drain,
-    stream::{FuturesUnordered, SplitSink, SplitStream, Stream},
+    stream::{FuturesUnordered, Stream},
     Future, FutureExt, SinkExt, StreamExt, TryStreamExt,
 };
 use protocol_mve_transport::Unravel;
+use rustls::NoClientAuth;
 use smol::{block_on, Async, Task};
-use std::net::{TcpListener, TcpStream};
+use std::net::TcpListener;
 use std::sync::Arc;
 use std::thread;
 
 use vessels_chat_demo::{
-    util::{CloseOnDrop, Spawner},
+    util::{CloseOnDrop, Spawner, TransportError},
     Chat, ErasedChat, Error,
 };
 
@@ -95,7 +94,8 @@ fn main() {
 
     block_on(async move {
         let mut connections =
-            Server::<Async<TcpListener>>::new().listen("127.0.0.1:8080".parse().unwrap());
+            TlsServer::<Async<TcpListener>>::new(Arc::new(ServerConfig::new(NoClientAuth::new())))
+                .listen("0.0.0.0:443".parse().unwrap());
 
         let server = ChatServer {
             senders: Arc::new(Mutex::new(vec![])),
@@ -114,14 +114,8 @@ fn main() {
 
             let (sender, receiver) = connection.split();
 
-            let receiver = receiver.map_err(|_| {
-                let a: Infallible = todo!();
-                a
-            });
-            let sender = sender.sink_map_err(|_| {
-                let a: Infallible = todo!();
-                a
-            });
+            let receiver = receiver.map_err(TransportError::new);
+            let sender = sender.sink_map_err(TransportError::new);
 
             Task::spawn(
                 Unravel::<_, _, _, ErasedChat>::new(

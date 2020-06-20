@@ -1,11 +1,7 @@
 use abstract_ws::SocketProvider;
-use abstract_ws_tungstenite::{Provider, Socket};
-use core::convert::Infallible;
+use abstract_ws_tungstenite::{Provider, Socket, TlsProvider, TlsSocket};
 use futures::{
-    channel::mpsc::unbounded,
-    stream::{SplitSink, SplitStream},
-    task::SpawnExt,
-    FutureExt, SinkExt, StreamExt, TryStreamExt,
+    channel::mpsc::unbounded, task::SpawnExt, FutureExt, SinkExt, StreamExt, TryStreamExt,
 };
 use iui::controls::{Button, Entry, HorizontalBox, Label, TextEntry, VerticalBox};
 use iui::prelude::*;
@@ -15,7 +11,7 @@ use std::net::TcpStream;
 use std::thread;
 
 use vessels_chat_demo::{
-    util::{CloseOnDrop, Spawner},
+    util::{CloseOnDrop, Spawner, TransportError},
     ErasedChat,
 };
 
@@ -57,20 +53,14 @@ fn main() {
 
     thread::spawn(move || {
         smol::run(
-            Provider::new()
+            TlsProvider::default()
                 .connect("ws://127.0.0.1:8080".parse().unwrap())
-                .then(|connection: Result<Socket<Async<TcpStream>>, _>| {
+                .then(|connection: Result<TlsSocket<Async<TcpStream>>, _>| {
                     let connection = connection.unwrap();
                     let (sender, receiver) = connection.split();
 
-                    let receiver = receiver.map_err(|_| {
-                        let a: Infallible = todo!();
-                        a
-                    });
-                    let sender = sender.sink_map_err(|_| {
-                        let a: Infallible = todo!();
-                        a
-                    });
+                    let receiver = receiver.map_err(TransportError::new);
+                    let sender = sender.sink_map_err(TransportError::new);
 
                     Coalesce::<_, _, _, ErasedChat>::new(
                         receiver,
