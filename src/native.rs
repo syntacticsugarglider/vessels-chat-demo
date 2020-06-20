@@ -1,12 +1,14 @@
 use abstract_ws::SocketProvider;
-use abstract_ws_tungstenite::{Provider, Socket, TlsProvider, TlsSocket};
+use abstract_ws_tungstenite::{TlsProvider, TlsSocket};
 use futures::{
     channel::mpsc::unbounded, task::SpawnExt, FutureExt, SinkExt, StreamExt, TryStreamExt,
 };
 use iui::controls::{Button, Entry, HorizontalBox, Label, TextEntry, VerticalBox};
 use iui::prelude::*;
 use protocol_mve_transport::Coalesce;
+use rustls::ClientConfig;
 use smol::Async;
+use std::env;
 use std::net::TcpStream;
 use std::thread;
 
@@ -51,10 +53,18 @@ fn main() {
         thread::spawn(|| smol::run(futures::future::pending::<()>()));
     }
 
+    let mut config = ClientConfig::new();
+
+    config
+        .root_store
+        .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
+
+    let addr = env::var("VESSELS_SERVER_URL").unwrap();
+
     thread::spawn(move || {
         smol::run(
-            TlsProvider::default()
-                .connect("ws://127.0.0.1:8080".parse().unwrap())
+            TlsProvider::new(config.into())
+                .connect(addr.parse().unwrap())
                 .then(|connection: Result<TlsSocket<Async<TcpStream>>, _>| {
                     let connection = connection.unwrap();
                     let (sender, receiver) = connection.split();

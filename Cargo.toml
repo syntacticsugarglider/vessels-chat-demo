@@ -9,7 +9,7 @@ iui = "0.3.0"
 protocol = { git = "https://github.com/noocene/protocol" }
 protocol-mve-transport = { git = "https://github.com/noocene/protocol-mve-transport" }
 abstract-ws = { git = "https://github.com/noocene/abstract-ws" }
-abstract-ws-tungstenite = { path = "../abstract-ws-tungstenite", features = ["smol", "tls"] }
+abstract-ws-tungstenite = { git = "https://github.com/noocene/abstract-ws-tungstenite", features = ["smol", "tls"] }
 core-error = { git = "https://github.com/core-error/core-error", default-features = false }
 thiserror = { git = "https://github.com/noocene/thiserror", default-features = false }
 futures = { version = "0.3.5", default-features = false }
@@ -17,6 +17,7 @@ smol = "0.1.11"
 num_cpus = "1.13.0"
 anyhow = "1.0.31"
 rustls = "0.17.0"
+webpki-roots = "0.19.0"
 
 [[bin]]
 name = "native"

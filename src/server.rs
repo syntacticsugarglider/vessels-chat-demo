@@ -10,8 +10,14 @@ use futures::{
     Future, FutureExt, SinkExt, StreamExt, TryStreamExt,
 };
 use protocol_mve_transport::Unravel;
-use rustls::NoClientAuth;
+use rustls::{
+    internal::pemfile::{certs, pkcs8_private_keys},
+    NoClientAuth,
+};
 use smol::{block_on, Async, Task};
+use std::env;
+use std::fs::File;
+use std::io::BufReader;
 use std::net::TcpListener;
 use std::sync::Arc;
 use std::thread;
@@ -92,10 +98,30 @@ fn main() {
         thread::spawn(|| smol::run(futures::future::pending::<()>()));
     }
 
+    let mut config = ServerConfig::new(NoClientAuth::new());
+
+    let certs = certs(&mut BufReader::new(
+        File::open(env::var("VESSELS_CERT_PATH").unwrap()).unwrap(),
+    ))
+    .unwrap();
+
+    let private_key = pkcs8_private_keys(&mut BufReader::new(
+        File::open(env::var("VESSELS_KEY_PATH").unwrap()).unwrap(),
+    ))
+    .unwrap()
+    .into_iter()
+    .next()
+    .unwrap();
+
+    config.set_single_cert(certs, private_key).unwrap();
+
+    let config = Arc::new(config);
+
     block_on(async move {
         let mut connections =
-            TlsServer::<Async<TcpListener>>::new(Arc::new(ServerConfig::new(NoClientAuth::new())))
-                .listen("0.0.0.0:443".parse().unwrap());
+            TlsServer::<Async<TcpListener>>::new(config).listen("0.0.0.0:443".parse().unwrap());
+
+        println!("listening on 0.0.0.0:443");
 
         let server = ChatServer {
             senders: Arc::new(Mutex::new(vec![])),
@@ -103,6 +129,7 @@ fn main() {
         };
 
         while let Some(connection) = connections.next().await {
+            println!("connection");
             let server = server.duplicate(id);
             id += 1;
 
